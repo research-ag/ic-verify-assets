@@ -1,4 +1,4 @@
-name: Publish to GitHub Packages (Yarn)
+name: Publish Package to NPM
 
 on:
   push:
@@ -17,17 +17,13 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: "16"
+          registry-url: "https://registry.npmjs.org"
 
-      - name: Install dependencies with Yarn
+      - name: Install dependencies
         run: yarn install
 
-      - name: Configure Git user
-        run: |
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Actions"
+      - name: Authenticate with NPM
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
-      - name: Authenticate to GitHub Packages
-        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > ~/.npmrc
-
-      - name: Publish package to GitHub Packages
-        run: yarn publish --registry=https://npm.pkg.github.com --new-version ${{ github.ref_name }}
+      - name: Publish package to NPM
+        run: yarn publish --non-interactive --new-version ${{ github.ref_name }}
