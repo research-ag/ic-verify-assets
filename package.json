@@ -1,11 +1,11 @@
 {
-  "name": "icverifyassets",
+  "name": "ic-verify-assets",
   "version": "1.0.0",
   "main": "index.js",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "icverifyassets": "./src/index.js"
+    "ic-verify-assets": "./src/index.js"
   },
   "dependencies": {
     "@dfinity/agent": "^2.2.0",
