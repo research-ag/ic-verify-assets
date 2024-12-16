@@ -1,13 +1,17 @@
+#!/usr/bin/env node
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+import { HttpAgent, Actor } from "@dfinity/agent";
 
 // Function to parse assets_leafs file
 // Returns files map (path -> hash)
-async function parseAssetsFile(filePath) {
+async function parseAssetsJson(filePath) {
   const data = await fs.readFile(filePath, "utf-8");
   const assetsArray = JSON.parse(data);
-  const assets = {};
+  const filesMap = {};
 
   for (const asset of assetsArray) {
     const identityEncoding = asset.encodings.find(
@@ -15,11 +19,62 @@ async function parseAssetsFile(filePath) {
     );
 
     if (identityEncoding) {
-      assets[asset.key] = identityEncoding.sha256[0].toLowerCase();
+      filesMap[asset.key] = identityEncoding.sha256[0].toLowerCase();
     }
   }
 
-  return assets;
+  return filesMap;
+}
+
+// Function to fetch assets from a canister
+// Returns files map (path -> hash)
+async function getAssetsFromCanister(canisterId) {
+  const agent = HttpAgent.createSync({
+    verifyQuerySignatures: false,
+  });
+
+  const assetCanisterIDL = ({ IDL }) =>
+    IDL.Service({
+      list: IDL.Func(
+        [IDL.Record({})],
+        [
+          IDL.Vec(
+            IDL.Record({
+              key: IDL.Text,
+              encodings: IDL.Vec(
+                IDL.Record({
+                  modified: IDL.Int,
+                  sha256: IDL.Opt(IDL.Vec(IDL.Nat8)),
+                  length: IDL.Nat,
+                  content_encoding: IDL.Text,
+                })
+              ),
+              content_type: IDL.Text,
+            })
+          ),
+        ],
+        ["query"]
+      ),
+    });
+
+  const actor = Actor.createActor(assetCanisterIDL, { agent, canisterId });
+
+  const assets = await actor.list({});
+
+  const filesMap = {};
+  for (const asset of assets) {
+    const identityEncoding = asset.encodings.find(
+      (encoding) => encoding.content_encoding === "identity"
+    );
+
+    if (identityEncoding) {
+      filesMap[asset.key] = Array.from(identityEncoding.sha256[0])
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  }
+
+  return filesMap;
 }
 
 // Function to calculate SHA-256 hash of a file
@@ -34,21 +89,21 @@ async function hashFile(filePath) {
 // Returns files map (path -> hash)
 async function createFilesMap(dir, baseDir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = {};
+  const filesMap = {};
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     const relativePath = path.relative(baseDir, fullPath);
 
     if (entry.isDirectory()) {
-      Object.assign(files, await createFilesMap(fullPath, baseDir));
+      Object.assign(filesMap, await createFilesMap(fullPath, baseDir));
     } else {
       const fileHash = await hashFile(fullPath);
-      files[`/${relativePath}`] = fileHash;
+      filesMap[`/${relativePath}`] = fileHash;
     }
   }
 
-  return files;
+  return filesMap;
 }
 
 function compareFileMaps(map1, map2) {
@@ -113,13 +168,51 @@ function logDiscrepancies(discrepancies) {
   }
 }
 
-// Main function
 async function main() {
-  const assetsPath = "./for_test/assets_leafs.json";
-  const distDir = "./for_test/dist";
+  const argv = yargs(hideBin(process.argv))
+    .usage(
+      "Usage: $0 --distDir <distDir> (--assetsJson <filePath> | --canisterId <id>)"
+    )
+    .wrap(null)
+    .option("distDir", {
+      alias: "d",
+      type: "string",
+      describe: "Path to the dist directory",
+      demandOption: true,
+    })
+    .option("assetsJson", {
+      alias: "f",
+      type: "string",
+      describe: "Path to the assets json file",
+      conflicts: "canisterId",
+    })
+    .option("canisterId", {
+      alias: "c",
+      type: "string",
+      describe: "Canister ID to fetch assets from",
+      conflicts: "assetsJson",
+    })
+    .check((argv) => {
+      if (!argv.assetsJson && !argv.canisterId) {
+        throw new Error(
+          "You must specify either --assetsJson or --canisterId."
+        );
+      }
+      return true;
+    })
+    .help().argv;
+
+  const distDir = argv.distDir;
+
+  let expectedFilesMap = {};
 
   try {
-    const expectedFilesMap = await parseAssetsFile(assetsPath);
+    if (argv.assetsJson) {
+      expectedFilesMap = await parseAssetsJson(argv.assetsJson);
+    } else {
+      expectedFilesMap = await getAssetsFromCanister(argv.canisterId);
+    }
+
     const actualFilesMap = await createFilesMap(distDir, distDir);
     const discrepancies = compareFileMaps(expectedFilesMap, actualFilesMap);
 
