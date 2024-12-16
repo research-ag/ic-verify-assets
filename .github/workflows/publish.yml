@@ -1,0 +1,29 @@
+name: Publish to GitHub Packages (Yarn)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies with Yarn
+        run: yarn install
+
+      - name: Authenticate to GitHub Packages
+        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > ~/.npmrc
+
+      - name: Publish package to GitHub Packages
+        run: yarn publish --registry=https://npm.pkg.github.com --new-version ${{ github.ref_name }}
+
