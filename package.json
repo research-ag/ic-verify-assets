@@ -5,9 +5,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "repository": "https://github.com/research-ag/ic-verify-assets",
-  "publishConfig": {
-    "access": "public"
-  },
   "bin": {
     "ic-verify-assets": "./src/index.js"
   },
