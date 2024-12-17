@@ -26,4 +26,7 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish package to NPM
-        run: yarn publish --access public --non-interactive --new-version ${{ github.ref_name }}
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION//v/}  # Remove the 'v' from version
+          yarn publish --access public --non-interactive --new-version $VERSION
